@@ -132,6 +132,136 @@ def get_test_diffs(dev_result_path: str, ci_result_path: str) -> None:
         json.dump(source_counts, f, indent=2)
 
 
+def compare_infores_sources(dev_result_path: str, ci_result_path: str, infores_filter: str = None) -> None:
+    """Compare infores sources between CI and Dev for specific test assets.
+    
+    Args:
+        dev_result_path: str - the local path to an automated test csv output file.
+        ci_result_path: str - the local path to an automated test csv output file.
+        infores_filter: str - optional infores to filter (e.g., 'infores:gtopdb')
+    """
+    dev_results = {}
+    with open(dev_result_path, encoding="utf-8") as f:
+        csv_reader = csv.reader(f)
+        columns = next(csv_reader)
+        for row in csv_reader:
+            row_dict = dict(zip(columns, row))
+            dev_results[row_dict["TestAsset"]] = row_dict
+
+    ci_results = {}
+    with open(ci_result_path, encoding="utf-8") as f:
+        csv_reader = csv.reader(f)
+        columns = next(csv_reader)
+        for row in csv_reader:
+            row_dict = dict(zip(columns, row))
+            ci_results[row_dict["TestAsset"]] = row_dict
+
+    diff_results = {}
+    for test_asset, results in ci_results.items():
+        if (
+            results["ars"] == "PASSED" and (
+                dev_results[test_asset]["ars"] == "FAILED" or
+                dev_results[test_asset]["ars"] == "DONE" or
+                dev_results[test_asset]["ars"] == "No results"
+            )
+        ):
+            diff_results[test_asset] = {
+                "ci": {
+                    **results,
+                },
+                "dev": {
+                    **dev_results[test_asset]
+                },
+            }
+
+    print(f"{len(diff_results.keys())} failed tests.")
+    
+    infores_comparison = {}
+    
+    for asset_id, result in diff_results.items():
+        asset = get_test_asset(asset_id)
+        if (
+            asset["expected_output"] != "TopAnswer" and
+            asset["expected_output"] != "Acceptable"
+        ):
+            continue
+        
+        print(f"Processing {asset_id}")
+        ci_pk, dev_pk = get_pks(result)
+        
+        ci_response_path = f"test_diffs/{asset_id}_ars_response_ci.json"
+        if not os.path.exists(ci_response_path):
+            ci_response = get_response_from_ars(ARS_CI_URL, ci_pk)
+            with open(ci_response_path, "w", encoding="utf-8") as f:
+                json.dump(ci_response, f, indent=2)
+        else:
+            with open(ci_response_path, "r", encoding="utf-8") as f:
+                ci_response = json.load(f)
+        
+        dev_response_path = f"test_diffs/{asset_id}_ars_response_dev.json"
+        if not os.path.exists(dev_response_path):
+            dev_response = get_response_from_ars(ARS_DEV_URL, dev_pk)
+            with open(dev_response_path, "w", encoding="utf-8") as f:
+                json.dump(dev_response, f, indent=2)
+        else:
+            with open(dev_response_path, "r", encoding="utf-8") as f:
+                dev_response = json.load(f)
+        
+        ci_sources = set()
+        dev_sources = set()
+        
+        for edge_id, edge in ci_response.get("message", {}).get("knowledge_graph", {}).get("edges", {}).items():
+            for source in edge.get("sources", []):
+                if source.get("resource_role") == "primary_knowledge_source":
+                    source_id = source.get("resource_id")
+                    if infores_filter is None or source_id == infores_filter:
+                        ci_sources.add(source_id)
+        
+        for edge_id, edge in dev_response.get("message", {}).get("knowledge_graph", {}).get("edges", {}).items():
+            for source in edge.get("sources", []):
+                if source.get("resource_role") == "primary_knowledge_source":
+                    source_id = source.get("resource_id")
+                    if infores_filter is None or source_id == infores_filter:
+                        dev_sources.add(source_id)
+        
+        only_in_ci = ci_sources - dev_sources
+        only_in_dev = dev_sources - ci_sources
+        in_both = ci_sources & dev_sources
+        
+        if only_in_ci or only_in_dev:
+            infores_comparison[asset_id] = {
+                "only_in_ci": sorted(list(only_in_ci)),
+                "only_in_dev": sorted(list(only_in_dev)),
+                "in_both": sorted(list(in_both)),
+            }
+    
+    output_file = "test_diffs/infores_comparison.json"
+    if infores_filter:
+        output_file = f"test_diffs/infores_comparison_{infores_filter.replace(':', '_')}.json"
+    
+    with open(output_file, "w", encoding="utf-8") as f:
+        json.dump(infores_comparison, f, indent=2)
+    
+    summary = {}
+    for asset_id, comparison in infores_comparison.items():
+        for source in comparison["only_in_ci"]:
+            if source not in summary:
+                summary[source] = {"count": 0, "test_assets": []}
+            summary[source]["count"] += 1
+            summary[source]["test_assets"].append(asset_id)
+    
+    summary_file = "test_diffs/infores_only_in_ci_summary.json"
+    if infores_filter:
+        summary_file = f"test_diffs/infores_only_in_ci_summary_{infores_filter.replace(':', '_')}.json"
+    
+    with open(summary_file, "w", encoding="utf-8") as f:
+        json.dump(summary, f, indent=2)
+    
+    print(f"\nSources only in CI (not in Dev):")
+    for source, data in sorted(summary.items(), key=lambda x: x[1]["count"], reverse=True):
+        print(f"  {source}: {data['count']} test assets")
+
+
 def normalize_curie(curie: str) -> str:
     """Normalize a list of curies."""
     node_norm = NODE_NORM_URL["ci"]

@@ -1,10 +1,12 @@
-.PHONY: run install clean help
+.PHONY: run infores install clean help
 
 help:
 	@echo "Available targets:"
-	@echo "  make run DEV=<path> CI=<path>  - Run the diff test results script"
-	@echo "  make install                   - Install dependencies"
-	@echo "  make clean                     - Clean test_diffs directory"
+	@echo "  make run DEV=<path> CI=<path>              - Run full diff analysis"
+	@echo "  make infores DEV=<path> CI=<path>          - Run infores comparison"
+	@echo "  make infores DEV=<path> CI=<path> FILTER=<infores> - Filter to specific infores"
+	@echo "  make install                               - Install dependencies"
+	@echo "  make clean                                 - Clean test_diffs directory"
 
 install:
 	uv sync
@@ -16,6 +18,18 @@ run:
 		exit 1; \
 	fi
 	uv run qa-diff "$(DEV)" "$(CI)"
+
+infores:
+	@if [ -z "$(DEV)" ] || [ -z "$(CI)" ]; then \
+		echo "Error: DEV and CI paths must be specified"; \
+		echo "Usage: make infores DEV=path/to/dev.csv CI=path/to/ci.csv [FILTER=infores:source]"; \
+		exit 1; \
+	fi
+	@if [ -n "$(FILTER)" ]; then \
+		uv run qa-diff "$(DEV)" "$(CI)" --mode infores --infores-filter "$(FILTER)"; \
+	else \
+		uv run qa-diff "$(DEV)" "$(CI)" --mode infores; \
+	fi
 
 clean:
 	rm -rf test_diffs
