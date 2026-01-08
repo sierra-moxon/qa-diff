@@ -1,14 +1,12 @@
-# AGENTS.md for go-fastapi
-
-FastAPI endpoint for GO services
+# AGENTS.md 
 
 ## Repo management
 
-This repo uses `python` for managing dependencies. Never use commands like `pip` to add or manage dependencies.
+This repo uses `uv` for managing dependencies. Never use commands like `pip` to add or manage dependencies.
 
 Layout:
 
- * `app/` - Code goes here
+ * `src/` - Code goes here
 
 Best practice:
 
