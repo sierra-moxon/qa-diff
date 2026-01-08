@@ -1,6 +1,6 @@
 import argparse
 import os
-from qa_diff.diff_test_results import get_test_diffs, compare_infores_sources
+from qa_diff.diff_test_results import get_test_diffs, compare_infores_sources, export_trapi_responses
 
 
 def main():
@@ -17,9 +17,9 @@ def main():
     )
     parser.add_argument(
         "--mode",
-        choices=["full", "infores"],
+        choices=["full", "infores", "trapi-export"],
         default="full",
-        help="Analysis mode: 'full' for complete analysis, 'infores' for source comparison only"
+        help="Analysis mode: 'full' for complete analysis, 'infores' for source comparison only, 'trapi-export' to export TRAPI responses"
     )
     parser.add_argument(
         "--infores-filter",
@@ -34,6 +34,8 @@ def main():
         get_test_diffs(args.dev_result_path, args.ci_result_path)
     elif args.mode == "infores":
         compare_infores_sources(args.dev_result_path, args.ci_result_path, args.infores_filter)
+    elif args.mode == "trapi-export":
+        export_trapi_responses(args.dev_result_path, args.ci_result_path)
 
 
 if __name__ == "__main__":
